@@ -227,8 +227,10 @@ class DDIMSamplerWithGrad(object):
                S,
                batch_size,
                shape,
-               operated_image=None,
-               operation=None,
+               operated_image_od=None,
+               operated_image_fd=None,
+               operation_od=None,
+               operation_fd=None,
                conditioning=None,
                eta=0.,
                temperature=1.,
@@ -283,11 +285,16 @@ class DDIMSamplerWithGrad(object):
             # num_step_length = len(operation.num_steps)
             # index_n = int(num_step_length * (ts[0] / self.num_timesteps))
             # num_steps = operation.num_steps[index_n]
-            num_steps = operation.num_steps[0]
 
             loss = None
             _ = None
 
+            # object detection guidance
+
+            operation = operation_od
+            operated_image = operated_image_od
+
+            num_steps = operation.num_steps[0]
             operation_func = operation.operation_func
             other_guidance_func = operation.other_guidance_func
             criterion = operation.loss_func
@@ -330,8 +337,117 @@ class DDIMSamplerWithGrad(object):
                         else:
                             selected = -1 * criterion(op_im, operated_image)
 
-                        print(ts)
-                        print(selected)
+                        # print(ts)
+                        # print(selected)
+
+                        grad = torch.autograd.grad(selected.sum(), img_in)[0]
+                        grad = grad * operation.optim_guidance_3_wt
+
+                        e_t = e_t - sqrt_one_minus_at * grad.detach() + unconditional_guidance_scale * (e_t_cond - e_t_uncond)
+
+                        img_in = img_in.requires_grad_(False)
+
+                        if operation.print:
+                            if j == 0:
+                                temp = (recons_image + 1) * 0.5
+                                utils.save_image(temp, f'{operation.folder}/img_at_{ts[0]}.png')
+
+                        del img_in, pred_x0, recons_image, op_im, selected, grad, e_t_uncond
+                        if operation.original_guidance:
+                            del x_in
+
+                    else:
+                        e_t = e_t + unconditional_guidance_scale * (e_t_cond - e_t_uncond)
+
+                        img_in = img_in.requires_grad_(False)
+
+                        if operation.print:
+                            if j == 0:
+                                temp = (recons_image + 1) * 0.5
+                                utils.save_image(temp, f'{operation.folder}/img_at_{ts[0]}.png')
+
+                        del img_in, pred_x0, recons_image, op_im
+                        if operation.original_guidance:
+                            del x_in
+
+
+                    torch.set_grad_enabled(False)
+
+                else:
+                    if operation.original_guidance:
+                        x_in = torch.cat([img] * 2)
+                        t_in = torch.cat([ts] * 2)
+                        c_in = torch.cat([unconditional_conditioning, cond])
+                        e_t_uncond, e_t = self.model.module.apply_model(x_in, t_in, c_in).chunk(2)
+                        e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)
+                    else:
+                        e_t = self.model.module.apply_model(img, ts, cond)
+
+                with torch.no_grad():
+                    # current prediction for x_0
+                    pred_x0 = (img - sqrt_one_minus_at * e_t) / a_t.sqrt()
+
+                    # direction pointing to x_t
+                    dir_xt = (1. - a_prev - sigma_t ** 2).sqrt() * e_t
+                    noise = sigma_t * noise_like(img.shape, device, False) * temperature
+
+                    x_prev = a_prev.sqrt() * pred_x0 + dir_xt + noise
+                    img = beta_t.sqrt() * x_prev + (1 - beta_t).sqrt() * noise_like(img.shape, device, False)
+
+                    del pred_x0, dir_xt, noise
+
+            img = x_prev
+
+            # face detection guidance
+
+            operation = operation_fd
+            operated_image = operated_image_fd
+
+            num_steps = operation.num_steps[0]
+            operation_func = operation.operation_func
+            other_guidance_func = operation.other_guidance_func
+            criterion = operation.loss_func
+            other_criterion = operation.other_criterion
+            max_iters = operation.max_iters
+            loss_cutoff = operation.loss_cutoff
+
+            for j in range(num_steps):
+
+                if operation.guidance_3:
+
+                    torch.set_grad_enabled(True)
+                    img_in = img.detach().requires_grad_(True)
+
+                    if operation.original_guidance:
+                        x_in = torch.cat([img_in] * 2)
+                        t_in = torch.cat([ts] * 2)
+                        c_in = torch.cat([unconditional_conditioning, cond])
+                        e_t_uncond, e_t_cond = self.model.module.apply_model(x_in, t_in, c_in).chunk(2)
+                        e_t = e_t_uncond # + unconditional_guidance_scale * (e_t - e_t_uncond)
+                        # del x_in
+                    else:
+                        e_t = self.model.module.apply_model(img_in, ts, cond)
+
+                    pred_x0 = (img_in - sqrt_one_minus_at * e_t) / a_t.sqrt()
+                    recons_image = self.model.module.decode_first_stage_with_grad(pred_x0)
+
+                    if other_guidance_func != None:
+                        op_im = other_guidance_func(recons_image)
+                    elif operation_func != None:
+                        op_im = operation_func(recons_image)
+                    else:
+                        op_im = recons_image
+
+                    if op_im is not None:
+                        if hasattr(operation_func, 'cal_loss'):
+                            selected = -1 * operation_func.cal_loss(recons_image, operated_image).unsqueeze(0)
+                        elif other_criterion != None:
+                            selected = -1 * other_criterion(op_im, operated_image)
+                        else:
+                            selected = -1 * criterion(op_im, operated_image)
+
+                        # print(ts)
+                        # print(selected)
 
                         grad = torch.autograd.grad(selected.sum(), img_in)[0]
                         grad = grad * operation.optim_guidance_3_wt
