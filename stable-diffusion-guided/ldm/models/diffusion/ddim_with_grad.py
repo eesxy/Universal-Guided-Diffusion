@@ -235,7 +235,8 @@ class DDIMSamplerWithGrad(object):
                eta=0.,
                temperature=1.,
                verbose=True,
-               unconditional_guidance_scale=1.,
+               unconditional_guidance_scale_od=1.,
+               unconditional_guidance_scale_fd=1.,
                unconditional_conditioning=None,
                ):
 
@@ -293,6 +294,7 @@ class DDIMSamplerWithGrad(object):
 
             operation = operation_od
             operated_image = operated_image_od
+            unconditional_guidance_scale = unconditional_guidance_scale_od
 
             num_steps = operation.num_steps[0]
             operation_func = operation.operation_func
@@ -402,6 +404,7 @@ class DDIMSamplerWithGrad(object):
 
             operation = operation_fd
             operated_image = operated_image_fd
+            unconditional_guidance_scale = unconditional_guidance_scale_fd
 
             num_steps = operation.num_steps[0]
             operation_func = operation.operation_func

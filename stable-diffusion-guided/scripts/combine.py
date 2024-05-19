@@ -420,7 +420,13 @@ def main():
         help="how many samples to produce for each given prompt. A.k.a. batch size",
     )
     parser.add_argument(
-        "--scale",
+        "--scale_od",
+        type=float,
+        default=1.5,
+        help="unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))",
+    )
+    parser.add_argument(
+        "--scale_fd",
         type=float,
         default=7.5,
         help="unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))",
@@ -589,18 +595,11 @@ def main():
             og_img_guide_fd, og_img_mask = operation_fd.operation_func(og_img, return_faces=True, mtcnn_face=True)
             utils.save_image((og_img_mask + 1) * 0.5, f'{results_folder}/og_img_cut_{index}.png')
 
-        uc = None
-        if opt.scale != 1.0:
-            uc = model.module.get_learned_conditioning(batch_size * [""])
+        uc = model.module.get_learned_conditioning(batch_size * [""])
         c = model.module.get_learned_conditioning(batch_size * [prompt])
     
     
         for n in trange(opt.trials, desc="Sampling"):
- 
-            uc = None
-            if opt.scale != 1.0:
-                uc = model.module.get_learned_conditioning(batch_size * [""])
-            c = model.module.get_learned_conditioning([prompt])
     
             shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
             samples_ddim = sampler.sample_seperate(S=opt.ddim_steps,
@@ -608,7 +607,8 @@ def main():
                                             batch_size=opt.n_samples,
                                             shape=shape,
                                             verbose=False,
-                                            unconditional_guidance_scale=opt.scale,
+                                            unconditional_guidance_scale_od=opt.scale_od,
+                                            unconditional_guidance_scale_fd=opt.scale_fd,
                                             unconditional_conditioning=uc,
                                             eta=opt.ddim_eta,
                                             operated_image_od=og_img_guide_od,
