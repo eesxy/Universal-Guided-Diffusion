@@ -55,9 +55,6 @@ import torch.nn.functional as F
 import torchvision.transforms.functional as TF
 
 
-
-
-
 def load_model_from_config(config, ckpt, verbose=False):
     print(f"Loading model from {ckpt}")
     pl_sd = torch.load(ckpt, map_location="cpu")
@@ -77,6 +74,7 @@ def load_model_from_config(config, ckpt, verbose=False):
     model.eval()
     return model
 
+
 def return_cv2(img, path):
     black = [255, 255, 255]
     img = (img + 1) * 0.5
@@ -85,6 +83,7 @@ def return_cv2(img, path):
     img = cv2.copyMakeBorder(img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=black)
     return img
 
+
 def create_folder(path):
     try:
         os.makedirs(path, exist_ok=True)
@@ -92,6 +91,7 @@ def create_folder(path):
         if exc.errno != errno.EEXIST:
             raise
         pass
+
 
 class ObjectDetection(nn.Module):
     def __init__(self):
@@ -105,18 +105,16 @@ class ObjectDetection(nn.Module):
 
         print(weights.meta["categories"])
 
-
     def forward(self, x):
         self.model.eval()
         inter = self.preprocess((x + 1) * 0.5)
         return self.model(inter)
-    
+
     def cal_loss(self, x, gt):
         def set_bn_to_eval(m):
             classname = m.__class__.__name__
             if classname.find('BatchNorm') != -1:
                 m.eval()
-
 
         self.model.train()
         self.model.backbone.eval()
@@ -124,7 +122,7 @@ class ObjectDetection(nn.Module):
         inter = self.preprocess((x + 1) * 0.5)
         loss = self.model(inter, gt)
         return loss['loss_classifier'] + loss['loss_objectness'] + loss['loss_rpn_box_reg']
-        
+
 
 # load safety model
 safety_model_id = "CompVis/stable-diffusion-safety-checker"
@@ -148,6 +146,7 @@ def numpy_to_pil(images):
 
     return pil_images
 
+
 def put_watermark(img, wm_encoder=None):
     if wm_encoder is not None:
         img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
@@ -160,7 +159,7 @@ def load_replacement(x):
     try:
         hwc = x.shape
         y = Image.open("assets/rick.jpeg").convert("RGB").resize((hwc[1], hwc[0]))
-        y = (np.array(y)/255.0).astype(x.dtype)
+        y = (np.array(y) / 255.0).astype(x.dtype)
         assert y.shape == x.shape
         return y
     except Exception:
@@ -169,12 +168,14 @@ def load_replacement(x):
 
 def check_safety(x_image):
     safety_checker_input = safety_feature_extractor(numpy_to_pil(x_image), return_tensors="pt")
-    x_checked_image, has_nsfw_concept = safety_checker(images=x_image, clip_input=safety_checker_input.pixel_values)
+    x_checked_image, has_nsfw_concept = safety_checker(images=x_image,
+                                                       clip_input=safety_checker_input.pixel_values)
     assert x_checked_image.shape[0] == len(has_nsfw_concept)
     for i in range(len(has_nsfw_concept)):
         if has_nsfw_concept[i]:
             x_checked_image[i] = load_replacement(x_checked_image[i])
     return x_checked_image, has_nsfw_concept
+
 
 class Dataset(data.Dataset):
     def __init__(self, folder, image_size, data_aug=False, exts=['jpg', 'jpeg', 'png']):
@@ -185,9 +186,7 @@ class Dataset(data.Dataset):
         random.shuffle(self.paths)
 
         self.transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Lambda(lambda t: (t * 2) - 1)
-        ])
+            transforms.ToTensor(), transforms.Lambda(lambda t: (t * 2) - 1)])
 
     def __len__(self):
         return len(self.paths)
@@ -200,6 +199,7 @@ class Dataset(data.Dataset):
 
         return self.transform(img)
 
+
 def return_cv2(img, path):
     black = [255, 255, 255]
     img = (img + 1) * 0.5
@@ -208,13 +208,17 @@ def return_cv2(img, path):
     img = cv2.copyMakeBorder(img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=black)
     return img
 
+
 def cycle(dl):
     while True:
         for data in dl:
             yield data
 
+
 import os
 import errno
+
+
 def create_folder(path):
     try:
         os.mkdir(path)
@@ -253,8 +257,7 @@ class FaceRecognition(nn.Module):
                     int(max(box[0] - margin[0] / 2, 0)),
                     int(max(box[1] - margin[1] / 2, 0)),
                     int(min(box[2] + margin[0] / 2, image_size)),
-                    int(min(box[3] + margin[1] / 2, image_size)),
-                ]
+                    int(min(box[3] + margin[1] / 2, image_size)), ]
                 crop_face = img[None, :, box[1]:box[3], box[0]:box[2]]
             else:
                 # crop_face = img[None, :, :, :]
@@ -272,8 +275,7 @@ class FaceRecognition(nn.Module):
             batch_boxes, batch_probs, batch_points = self.mtcnn.detect(img, landmarks=True)
             # Select faces
             batch_boxes, batch_probs, batch_points = self.mtcnn.select_boxes(
-                batch_boxes, batch_probs, batch_points, img, method=self.mtcnn.selection_method
-            )
+                batch_boxes, batch_probs, batch_points, img, method=self.mtcnn.selection_method)
 
         img = img.permute(0, 3, 1, 2)
         faces = self.extract_face(img, batch_boxes, mtcnn_face)
@@ -304,10 +306,12 @@ class FaceRecognition(nn.Module):
         self.mtcnn = self.mtcnn.cuda()
         return self
 
+
 def cycle_cat(dl):
     while True:
         for data in dl:
             yield data[0]
+
 
 def l1_loss(input, target):
     l = torch.abs(input - target).mean(dim=[1])
@@ -319,7 +323,7 @@ def get_optimation_details_od(args):
     guidance_func = ObjectDetection().cuda()
     operation = OptimizerDetails()
 
-    operation.num_steps = args.optim_num_steps_od
+    operation.num_steps = args.optim_num_steps
     operation.operation_func = guidance_func
 
     operation.optimizer = 'Adam'
@@ -351,7 +355,7 @@ def get_optimation_details_fd(args):
     guidance_func = FaceRecognition(fr_crop=args.fr_crop, mtcnn_face=mtcnn_face).cuda()
     operation = OptimizerDetails()
 
-    operation.num_steps = args.optim_num_steps_fd
+    operation.num_steps = args.optim_num_steps
     operation.operation_func = guidance_func
 
     operation.optimizer = 'Adam'
@@ -373,6 +377,7 @@ def get_optimation_details_fd(args):
     operation.folder = args.optim_folder
 
     return operation
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -420,16 +425,11 @@ def main():
         help="how many samples to produce for each given prompt. A.k.a. batch size",
     )
     parser.add_argument(
-        "--scale_od",
+        "--scale",
         type=float,
         default=1.5,
-        help="unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))",
-    )
-    parser.add_argument(
-        "--scale_fd",
-        type=float,
-        default=7.5,
-        help="unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))",
+        help=
+        "unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))",
     )
     parser.add_argument(
         "--config",
@@ -465,8 +465,7 @@ def main():
     parser.add_argument('--optim_print', action='store_true', default=False)
     parser.add_argument('--optim_aug', action='store_true', default=False)
     parser.add_argument('--optim_folder', default='./temp/')
-    parser.add_argument("--optim_num_steps_od", nargs="+", default=[5], type=int)
-    parser.add_argument("--optim_num_steps_fd", nargs="+", default=[2], type=int)
+    parser.add_argument("--optim_num_steps", nargs="+", default=[5], type=int)
     parser.add_argument("--optim_mask_fraction", default=0.5, type=float)
 
     parser.add_argument('--text_type', type=int, default=1)
@@ -494,7 +493,6 @@ def main():
     model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
     model.eval()
 
-
     sampler = DDIMSamplerWithGrad(model)
 
     batch_size = opt.n_samples
@@ -508,14 +506,13 @@ def main():
     transform = transforms.Compose([
         transforms.Resize((image_size, image_size)),
         transforms.ToTensor(),
-        transforms.Lambda(lambda t: (t * 2) - 1)
-    ])
+        transforms.Lambda(lambda t: (t * 2) - 1)])
 
     batch_size = opt.batch_size
 
     ds = ImageFolder(root=opt.face_folder, transform=transform)
     dl = data.DataLoader(ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=16,
-                                   drop_last=True)
+                         drop_last=True)
 
     torch.set_grad_enabled(False)
 
@@ -525,9 +522,8 @@ def main():
         prompt = "a headshot of a woman with a dog"
 
     print(prompt)
-    
-    # Setup for object detection
 
+    # Setup for object detection
 
     def gen_box(num_image, anchor_locs, label, sizes):
 
@@ -544,42 +540,39 @@ def main():
                 else:
                     x_size = size
                     y_size = size
-                box = [x - x_size / 2, y - y_size/2, x + x_size/2, y + y_size/2]
+                box = [x - x_size / 2, y - y_size / 2, x + x_size / 2, y + y_size / 2]
                 boxes.append(box)
             boxes = torch.Tensor(boxes)
             objd_cond.append({'boxes': boxes.cuda(), 'labels': labels.cuda()})
         return objd_cond
- 
+
     def draw_box(img, pred):
         labels = [obj_categories[j] for j in pred["labels"].cpu()]
         uint8_image = (img.cpu() * 255).to(torch.uint8)
-        box = draw_bounding_boxes(uint8_image, boxes=pred["boxes"].cpu(),
-                labels=labels,
-                colors="red", width=4)
+        box = draw_bounding_boxes(uint8_image, boxes=pred["boxes"].cpu(), labels=labels,
+                                  colors="red", width=4)
         box = box.float() / 255.0
         box = box * 2 - 1
         return box
-    
-    
+
     for index, d in zip(opt.indexes, dl):
-        
+
         # object detection
         print(f'current bounding box:{index}')
         # Change the bounding box definition here
         if index == 0:
             obj_det_cats = ["dog", "person"]
             test_anchor_locs = [(128.0, 256.0), (384.0, 256.0)]
-            sizes = [180, [200,400]]
+            sizes = [180, [200, 400]]
         elif index == 1:
             obj_det_cats = ["person", "dog"]
             test_anchor_locs = [(128.0, 256.0), (384.0, 256.0)]
-            sizes = [[200,400], 180]
+            sizes = [[200, 400], 180]
         elif index == 2:
             obj_det_cats = ["dog", "person"]
             test_anchor_locs = [(150.0, 384.0), (384.0, 256.0)]
-            sizes = [[275,200], [200,400]]
-    
-    
+            sizes = [[275, 200], [200, 400]]
+
         obj_categories = operation_od.operation_func.categories
         category = [obj_categories.index(cc) for cc in obj_det_cats]
         og_img_guide_od = gen_box(opt.n_samples, test_anchor_locs, category, sizes)
@@ -592,33 +585,34 @@ def main():
         utils.save_image(temp, f'{results_folder}/og_img_{index}.png')
 
         with torch.no_grad():
-            og_img_guide_fd, og_img_mask = operation_fd.operation_func(og_img, return_faces=True, mtcnn_face=True)
+            og_img_guide_fd, og_img_mask = operation_fd.operation_func(
+                og_img, return_faces=True, mtcnn_face=True)
             utils.save_image((og_img_mask + 1) * 0.5, f'{results_folder}/og_img_cut_{index}.png')
 
         uc = model.module.get_learned_conditioning(batch_size * [""])
         c = model.module.get_learned_conditioning(batch_size * [prompt])
-    
-    
+
         for n in trange(opt.trials, desc="Sampling"):
-    
+
             shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
-            samples_ddim = sampler.sample_seperate(S=opt.ddim_steps,
-                                            conditioning=c,
-                                            batch_size=opt.n_samples,
-                                            shape=shape,
-                                            verbose=False,
-                                            unconditional_guidance_scale_od=opt.scale_od,
-                                            unconditional_guidance_scale_fd=opt.scale_fd,
-                                            unconditional_conditioning=uc,
-                                            eta=opt.ddim_eta,
-                                            operated_image_od=og_img_guide_od,
-                                            operated_image_fd=og_img_guide_fd,
-                                            operation_od=operation_od,
-                                            operation_fd=operation_fd,)
-    
+            samples_ddim = sampler.sample_seperate(
+                S=opt.ddim_steps,
+                conditioning=c,
+                batch_size=opt.n_samples,
+                shape=shape,
+                verbose=False,
+                unconditional_guidance_scale=opt.scale,
+                unconditional_conditioning=uc,
+                eta=opt.ddim_eta,
+                operated_image_od=og_img_guide_od,
+                operated_image_fd=og_img_guide_fd,
+                operation_od=operation_od,
+                operation_fd=operation_fd,
+            )
+
             x_samples_ddim = model.module.decode_first_stage(samples_ddim)
             x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
-    
+
             utils.save_image(x_samples_ddim, f'{results_folder}/new_img_{n}.png')
             box_original_output = draw_box(x_samples_ddim[0].detach(), og_img_guide_od[0])
             img_ = return_cv2(box_original_output, f'{results_folder}/box_new_img_{n}.png')
@@ -626,7 +620,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
     """
-    python scripts/combine.py --indexes 0 --text "a headshot of a woman with a dog" --scale 1.5 --optim_forward_guidance --optim_num_steps_od 5 --optim_forward_guidance_wt_od 100 --optim_num_steps_fd 2 --optim_forward_guidance_wt_fd 20000 --optim_original_conditioning --ddim_steps 500 --face_folder ./data/face_data/ --optim_folder ./test_combine/ --ckpt <Path to stable diffusion model>
+    python scripts/combine.py --indexes 0 --text "a headshot of a woman with a dog" --scale 1.5 --optim_forward_guidance --optim_num_steps 2 --optim_forward_guidance_wt_od 100 --optim_forward_guidance_wt_fd 20000 --optim_original_conditioning --ddim_steps 500 --face_folder ./data/face_data/ --optim_folder ./test_combine/ --ckpt <Path to stable diffusion model>
     """
