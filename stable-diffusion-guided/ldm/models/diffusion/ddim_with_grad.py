@@ -375,7 +375,7 @@ class DDIMSamplerWithGrad(object):
                     img_in = img_in.requires_grad_(False)
 
                     if operation_od.print:
-                        if j == 0:
+                        if i % operation_od.print_every == 0 and j == 0:
                             temp = (recons_image + 1) * 0.5
                             utils.save_image(temp, f'{operation_od.folder}/img_at_{ts[0]}.png')
 

@@ -373,7 +373,7 @@ def get_optimation_details_fd(args):
 
     operation.warm_start = args.optim_warm_start
     operation.print = args.optim_print
-    operation.print_every = 5
+    operation.print_every = 20
     operation.folder = args.optim_folder
 
     return operation
