@@ -216,6 +216,177 @@ class DDIMSamplerWithGrad(object):
         S,
         batch_size,
         shape,
+        operated_image=None,
+        operation=None,
+        conditioning=None,
+        eta=0.,
+        temperature=1.,
+        verbose=True,
+        unconditional_guidance_scale=1.,
+        unconditional_conditioning=None,
+    ):
+
+        self.make_schedule(ddim_num_steps=S, ddim_eta=eta, verbose=verbose)
+        # sampling
+        C, H, W = shape
+        shape = (batch_size, C, H, W)
+        cond = conditioning
+
+        device = self.model.module.betas.device
+        b = shape[0]
+
+        img = torch.randn(shape, device=device)
+
+        timesteps = self.ddim_timesteps
+        time_range = np.flip(timesteps)
+        total_steps = timesteps.shape[0]
+
+        iterator = tqdm(time_range, desc='DDIM Sampler', total=total_steps)
+
+        alphas = self.ddim_alphas
+        alphas_prev = self.ddim_alphas_prev
+        sqrt_one_minus_alphas = self.ddim_sqrt_one_minus_alphas
+        sigmas = self.ddim_sigmas
+
+        for param in self.model.module.first_stage_model.parameters():
+            param.requires_grad = False
+
+        for i, step in enumerate(iterator):
+            index = total_steps - i - 1
+            ts = torch.full((b, ), step, device=device, dtype=torch.long)
+
+            b, *_, device = *img.shape, img.device
+
+            # select parameters corresponding to the currently considered timestep
+            a_t = torch.full((b, 1, 1, 1), alphas[index], device=device)
+            a_prev = torch.full((b, 1, 1, 1), alphas_prev[index], device=device)
+            sigma_t = torch.full((b, 1, 1, 1), sigmas[index], device=device)
+            sqrt_one_minus_at = torch.full((b, 1, 1, 1), sqrt_one_minus_alphas[index],
+                                           device=device)
+
+            beta_t = a_t / a_prev
+
+            # num_step_length = len(operation.num_steps)
+            # index_n = int(num_step_length * (ts[0] / self.num_timesteps))
+            # num_steps = operation.num_steps[index_n]
+            num_steps = operation.num_steps[0]
+
+            loss = None
+            _ = None
+
+            operation_func = operation.operation_func
+            other_guidance_func = operation.other_guidance_func
+            criterion = operation.loss_func
+            other_criterion = operation.other_criterion
+            max_iters = operation.max_iters
+            loss_cutoff = operation.loss_cutoff
+
+            for j in range(num_steps):
+
+                if operation.guidance_3:
+
+                    torch.set_grad_enabled(True)
+                    img_in = img.detach().requires_grad_(True)
+
+                    if operation.original_guidance:
+                        x_in = torch.cat([img_in] * 2)
+                        t_in = torch.cat([ts] * 2)
+                        c_in = torch.cat([unconditional_conditioning, cond])
+                        e_t_uncond, e_t_cond = self.model.module.apply_model(x_in, t_in,
+                                                                             c_in).chunk(2)
+                        e_t = e_t_uncond  # + unconditional_guidance_scale * (e_t - e_t_uncond)
+                        # del x_in
+                    else:
+                        e_t = self.model.module.apply_model(img_in, ts, cond)
+
+                    pred_x0 = (img_in - sqrt_one_minus_at * e_t) / a_t.sqrt()
+                    recons_image = self.model.module.decode_first_stage_with_grad(pred_x0)
+
+                    if other_guidance_func != None:
+                        op_im = other_guidance_func(recons_image)
+                    elif operation_func != None:
+                        op_im = operation_func(recons_image)
+                    else:
+                        op_im = recons_image
+
+                    if op_im is not None:
+                        if hasattr(operation_func, 'cal_loss'):
+                            selected = -1 * operation_func.cal_loss(recons_image,
+                                                                    operated_image).unsqueeze(0)
+                        elif other_criterion != None:
+                            selected = -1 * other_criterion(op_im, operated_image)
+                        else:
+                            selected = -1 * criterion(op_im, operated_image)
+
+                        print(ts)
+                        print(selected)
+
+                        grad = torch.autograd.grad(selected.sum(), img_in)[0]
+                        grad = grad * operation.optim_guidance_3_wt
+
+                        e_t = e_t - sqrt_one_minus_at * grad.detach(
+                        ) + unconditional_guidance_scale * (e_t_cond - e_t_uncond)
+
+                        img_in = img_in.requires_grad_(False)
+
+                        if operation.print:
+                            if j == 0:
+                                temp = (recons_image + 1) * 0.5
+                                utils.save_image(temp, f'{operation.folder}/img_at_{ts[0]}.png')
+
+                        del img_in, pred_x0, recons_image, op_im, selected, grad, e_t_uncond
+                        if operation.original_guidance:
+                            del x_in
+
+                    else:
+                        e_t = e_t + unconditional_guidance_scale * (e_t_cond - e_t_uncond)
+
+                        img_in = img_in.requires_grad_(False)
+
+                        if operation.print:
+                            if j == 0:
+                                temp = (recons_image + 1) * 0.5
+                                utils.save_image(temp, f'{operation.folder}/img_at_{ts[0]}.png')
+
+                        del img_in, pred_x0, recons_image, op_im
+                        if operation.original_guidance:
+                            del x_in
+
+                    torch.set_grad_enabled(False)
+
+                else:
+                    if operation.original_guidance:
+                        x_in = torch.cat([img] * 2)
+                        t_in = torch.cat([ts] * 2)
+                        c_in = torch.cat([unconditional_conditioning, cond])
+                        e_t_uncond, e_t = self.model.module.apply_model(x_in, t_in, c_in).chunk(2)
+                        e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)
+                    else:
+                        e_t = self.model.module.apply_model(img, ts, cond)
+
+                with torch.no_grad():
+                    # current prediction for x_0
+                    pred_x0 = (img - sqrt_one_minus_at * e_t) / a_t.sqrt()
+
+                    # direction pointing to x_t
+                    dir_xt = (1. - a_prev - sigma_t**2).sqrt() * e_t
+                    noise = sigma_t * noise_like(img.shape, device, False) * temperature
+
+                    x_prev = a_prev.sqrt() * pred_x0 + dir_xt + noise
+                    img = beta_t.sqrt() * x_prev + (1 - beta_t).sqrt() * noise_like(
+                        img.shape, device, False)
+
+                    del pred_x0, dir_xt, noise
+
+            img = x_prev
+
+        return img
+
+    def sample_combine(
+        self,
+        S,
+        batch_size,
+        shape,
         operated_image_od=None,
         operated_image_fd=None,
         operation_od=None,
