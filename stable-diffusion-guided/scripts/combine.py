@@ -373,7 +373,7 @@ def get_optimation_details_fd(args):
 
     operation.warm_start = args.optim_warm_start
     operation.print = args.optim_print
-    operation.print_every = 5
+    operation.print_every = 20
     operation.folder = args.optim_folder
 
     return operation
@@ -595,7 +595,7 @@ def main():
         for n in trange(opt.trials, desc="Sampling"):
 
             shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
-            samples_ddim = sampler.sample_seperate(
+            samples_ddim = sampler.sample_combine(
                 S=opt.ddim_steps,
                 conditioning=c,
                 batch_size=opt.n_samples,
@@ -621,5 +621,5 @@ def main():
 if __name__ == "__main__":
     main()
     """
-    python scripts/combine.py --indexes 0 --text "a headshot of a woman with a dog" --scale 1.5 --optim_forward_guidance --optim_num_steps 2 --optim_forward_guidance_wt_od 100 --optim_forward_guidance_wt_fd 20000 --optim_original_conditioning --ddim_steps 500 --face_folder ./data/face_data/ --optim_folder ./test_combine/ --ckpt <Path to stable diffusion model>
+    python scripts/combine.py --indexes 0 --text "a blonde hair woman with a dog" --optim_forward_guidance --scale 1.5  --optim_num_steps 10 --optim_forward_guidance_wt_od 100 --optim_forward_guidance_wt_fd 1000 --optim_original_conditioning --ddim_steps 500 --face_folder ./data/face_data/ --optim_folder ./test_combine/ --ckpt <Path to stable diffusion model>
     """
