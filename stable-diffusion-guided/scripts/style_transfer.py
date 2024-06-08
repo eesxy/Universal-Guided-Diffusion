@@ -44,10 +44,11 @@ from torchvision.datasets import ImageFolder
 
 
 # load safety model
+'''
 safety_model_id = "CompVis/stable-diffusion-safety-checker"
 safety_feature_extractor = AutoFeatureExtractor.from_pretrained(safety_model_id)
 safety_checker = StableDiffusionSafetyChecker.from_pretrained(safety_model_id)
-
+'''
 
 def chunk(it, size):
     it = iter(it)
@@ -104,7 +105,7 @@ def load_replacement(x):
     except Exception:
         return x
 
-
+'''
 def check_safety(x_image):
     safety_checker_input = safety_feature_extractor(numpy_to_pil(x_image), return_tensors="pt")
     x_checked_image, has_nsfw_concept = safety_checker(images=x_image, clip_input=safety_checker_input.pixel_values)
@@ -113,6 +114,7 @@ def check_safety(x_image):
         if has_nsfw_concept[i]:
             x_checked_image[i] = load_replacement(x_checked_image[i])
     return x_checked_image, has_nsfw_concept
+'''
 
 class Dataset(data.Dataset):
     def __init__(self, folder, image_size, data_aug=False, exts=['jpg', 'jpeg', 'png']):
@@ -220,6 +222,8 @@ def get_optimation_details(args):
     operation.guidance_3 = args.optim_forward_guidance
     operation.guidance_2 = args.optim_backward_guidance
     operation.original_guidance = args.optim_original_conditioning
+    operation.mix_guidance = args.optim_mix_conditioning
+    operation.mix_guidance2 = args.optim_mix_conditioning2
     operation.optim_guidance_3_wt = args.optim_forward_guidance_wt
 
     operation.warm_start = args.optim_warm_start
@@ -299,6 +303,8 @@ def main():
     parser.add_argument('--optim_forward_guidance', action='store_true', default=False)
     parser.add_argument('--optim_backward_guidance', action='store_true', default=False)
     parser.add_argument('--optim_original_conditioning', action='store_true', default=False)
+    parser.add_argument('--optim_mix_conditioning', action='store_true', default=False)
+    parser.add_argument('--optim_mix_conditioning2', action='store_true', default=False)
     parser.add_argument("--optim_forward_guidance_wt", default=5.0, type=float)
     parser.add_argument("--optim_tv_loss", default=None, type=float)
     parser.add_argument('--optim_warm_start', action='store_true', default=False)
