@@ -151,6 +151,8 @@ def get_optimation_details(args):
 
     operation.optim_guidance_3_wt = args.optim_forward_guidance_wt
     operation.original_guidance = args.optim_original_conditioning
+    operation.mix_guidance = args.optim_mix_conditioning
+    operation.mix_guidance2 = args.optim_mix_conditioning2
 
     operation.warm_start = args.optim_warm_start
     operation.print = args.optim_print
@@ -236,6 +238,8 @@ def main():
     parser.add_argument('--optim_forward_guidance', action='store_true', default=False)
     parser.add_argument('--optim_backward_guidance', action='store_true', default=False)
     parser.add_argument('--optim_original_conditioning', action='store_true', default=False)
+    parser.add_argument('--optim_mix_conditioning', action='store_true', default=False)
+    parser.add_argument('--optim_mix_conditioning2', action='store_true', default=False)
     parser.add_argument("--optim_forward_guidance_wt", default=5.0, type=float)
     parser.add_argument('--optim_do_forward_guidance_norm', action='store_true', default=False)
     parser.add_argument("--optim_tv_loss", default=None, type=float)
