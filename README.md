@@ -118,3 +118,28 @@ python Guided/Clip_guided.py --trials 5 --samples_per_diffusion 2 --text "Van Go
 python Guided/Clip_guided.py --trials 5 --samples_per_diffusion 2 --text "Birthday Cake" --optim_forward_guidance --optim_forward_guidance_wt 2.0 --optim_num_steps 10 --optim_folder ./Clip_btd_cake/ --batch_size 8 --attention_resolutions 32,16,8 --class_cond False --diffusion_steps 1000 --image_size 256 --learn_sigma True --noise_schedule linear --num_channels 256 --num_head_channels 64 --num_res_blocks 2 --resblock_updown True --use_fp16 False --use_scale_shift_norm True --model_path <Path to the unconditional diffusion model>
 ```
 <img src="./Guided_Diffusion_Imagenet/images_readme/imgnet_ood.png" width="1000px"></img>
+
+## 优化方案一：面向更加自由化的通用引导生成
+在单张NVIDIA RTX 4090上执行以下脚本，其中`--optim_original_conditioning`是通用引导生成的基础方案(baseline)，`--optim_mix_conditioning`是自由化引导的方案1，`--optim_mix_conditioning2`是自由化引导的方案2，下述脚本在目标检测、人脸识别、风格迁移3个下游任务上，以stable-diffusion-model-v1-4作为基础模型，探究三种引导方案各自的引导效果。
+```
+#!/usr/bin/env bash
+echo "开始测试......"
+python scripts/style_transfer.py --indexes 0 --text "A colorful photo of a eiffel tower" --scale 3.0 --optim_forward_guidance --optim_num_steps 6 --optim_forward_guidance_wt 6 --optim_original_conditioning --ddim_steps 500 --optim_folder ./test_style/text_type_1/ --ckpt sd-v1-4.ckpt --trials 3
+wait
+python scripts/style_transfer.py --indexes 0 --text "A colorful photo of a eiffel tower" --scale 3.0 --optim_forward_guidance --optim_num_steps 6 --optim_forward_guidance_wt 6 --optim_mix_conditioning --ddim_steps 500 --optim_folder ./test_style/text_type_2/ --ckpt sd-v1-4.ckpt --trials 3
+wait
+python scripts/style_transfer.py --indexes 0 --text "A colorful photo of a eiffel tower" --scale 3.0 --optim_forward_guidance --optim_num_steps 6 --optim_forward_guidance_wt 6 --optim_mix_conditioning2 --ddim_steps 500 --optim_folder ./test_style/text_type_3/ --ckpt sd-v1-4.ckpt --trials 3
+wait
+python scripts/object_detection.py --indexes 0 --text "a headshot of a woman with a dog" --scale 1.5 --optim_forward_guidance --optim_num_steps 5 --optim_forward_guidance_wt 100 --optim_original_conditioning --ddim_steps 250 --optim_folder ./test_od/text_type_1/ --ckpt sd-v1-4.ckpt --trials 3
+wait
+python scripts/object_detection.py --indexes 0 --text "a headshot of a woman with a dog" --scale 1.5 --optim_forward_guidance --optim_num_steps 5 --optim_forward_guidance_wt 100 --optim_mix_conditioning --ddim_steps 250 --optim_folder ./test_od/text_type_2/ --ckpt sd-v1-4.ckpt --trials 3
+wait
+python scripts/object_detection.py --indexes 0 --text "a headshot of a woman with a dog" --scale 1.5 --optim_forward_guidance --optim_num_steps 5 --optim_forward_guidance_wt 100 --optim_mix_conditioning2 --ddim_steps 250 --optim_folder ./test_od/text_type_3/ --ckpt sd-v1-4.ckpt --trials 3
+wait
+python scripts/face_detection.py --indexes 0 --text "Headshot of a person with blonde hair with space background" --optim_forward_guidance --fr_crop --optim_num_steps 2 --optim_forward_guidance_wt 20000 --optim_original_conditioning --ddim_steps 500 --optim_folder ./test_face/text_type_1/ --ckpt sd-v1-4.ckpt --trials 3
+wait
+python scripts/face_detection.py --indexes 0 --text "Headshot of a person with blonde hair with space background" --optim_forward_guidance --fr_crop --optim_num_steps 2 --optim_forward_guidance_wt 20000 --optim_mix_conditioning --ddim_steps 500 --optim_folder ./test_face/text_type_2/ --ckpt sd-v1-4.ckpt --trials 3
+wait
+python scripts/face_detection.py --indexes 0 --text "Headshot of a person with blonde hair with space background" --optim_forward_guidance --fr_crop --optim_num_steps 2 --optim_forward_guidance_wt 20000 --optim_mix_conditioning2 --ddim_steps 500 --optim_folder ./test_face/text_type_3/ --ckpt sd-v1-4.ckpt --trials 3
+echo "结束测试......"
+```
